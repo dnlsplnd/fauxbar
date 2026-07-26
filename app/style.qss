@@ -1,0 +1,149 @@
+* {
+    font-family: "Segoe UI", "Cantarell", sans-serif;
+    font-size: 9pt;
+}
+
+QMainWindow, QWidget {
+    background-color: #232323;
+    color: #d8d8d8;
+}
+
+QMenuBar {
+    background-color: #2a2a2a;
+    color: #d8d8d8;
+    border-bottom: 1px solid #151515;
+}
+
+QMenuBar::item:selected {
+    background-color: #3a6ea5;
+}
+
+QMenu {
+    background-color: #2a2a2a;
+    color: #d8d8d8;
+    border: 1px solid #151515;
+}
+
+QMenu::item:selected {
+    background-color: #3a6ea5;
+}
+
+QTableView {
+    background-color: #1c1c1c;
+    alternate-background-color: #222222;
+    color: #d8d8d8;
+    gridline-color: #303030;
+    selection-background-color: #3a6ea5;
+    selection-color: #ffffff;
+    border: 1px solid #151515;
+}
+
+QTableView::item {
+    padding: 2px 6px;
+}
+
+QHeaderView::section {
+    background-color: #2e2e2e;
+    color: #b8b8b8;
+    padding: 3px 6px;
+    border: none;
+    border-right: 1px solid #151515;
+    border-bottom: 1px solid #151515;
+}
+
+QScrollBar:vertical {
+    background: #1c1c1c;
+    width: 12px;
+}
+
+QScrollBar::handle:vertical {
+    background: #444444;
+    min-height: 24px;
+    border-radius: 2px;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+#TransportBar {
+    background-color: #2a2a2a;
+    border-top: 1px solid #151515;
+}
+
+#TransportBar QPushButton {
+    background-color: #383838;
+    border: 1px solid #151515;
+    color: #d8d8d8;
+    min-width: 28px;
+    min-height: 22px;
+    border-radius: 2px;
+}
+
+#TransportBar QPushButton:hover {
+    background-color: #454545;
+}
+
+#TransportBar QPushButton:pressed {
+    background-color: #3a6ea5;
+}
+
+QSlider::groove:horizontal {
+    height: 4px;
+    background: #151515;
+    border-radius: 2px;
+}
+
+QSlider::handle:horizontal {
+    background: #b8b8b8;
+    width: 10px;
+    margin: -4px 0;
+    border-radius: 5px;
+}
+
+QSlider::sub-page:horizontal {
+    background: #3a6ea5;
+    border-radius: 2px;
+}
+
+QStatusBar {
+    background-color: #2a2a2a;
+    color: #909090;
+    border-top: 1px solid #151515;
+}
+
+QLabel#TimeLabel {
+    color: #b8b8b8;
+    font-family: "Consolas", "DejaVu Sans Mono", monospace;
+}
+
+QDockWidget {
+    color: #d8d8d8;
+    titlebar-close-icon: none;
+    titlebar-normal-icon: none;
+}
+
+QDockWidget::title {
+    background-color: #2e2e2e;
+    padding: 3px 6px;
+    border-bottom: 1px solid #151515;
+}
+
+QLabel#NowPlayingTitle {
+    font-size: 13pt;
+    font-weight: bold;
+    color: #eeeeee;
+    padding: 4px 8px 0 8px;
+}
+
+QLabel#NowPlayingAlbum {
+    font-size: 9pt;
+    color: #909090;
+    padding: 0 8px;
+}
+
+QToolBar {
+    background-color: #2a2a2a;
+    border: none;
+    spacing: 4px;
+}
