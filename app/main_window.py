@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
 )
 
 from app.library import LibraryPanel
-from app.peak_meter import PeakMeterWidget
 from app.playlist_model import PlaylistModel, format_duration
 from app.player import PlayerEngine
 from app.spectrum import SpectrumWidget
@@ -52,9 +51,6 @@ class MainWindow(QMainWindow):
         # corner and squeezes any Left dock into a sliver at the bottom.
         self.setCorner(Qt.TopLeftCorner, Qt.LeftDockWidgetArea)
         self.setCorner(Qt.BottomLeftCorner, Qt.LeftDockWidgetArea)
-        # Same fix, mirrored, for the right side (Peak Meter dock).
-        self.setCorner(Qt.TopRightCorner, Qt.RightDockWidgetArea)
-        self.setCorner(Qt.BottomRightCorner, Qt.RightDockWidgetArea)
 
         self.table = QTableView(self)
         self.table.setModel(self.model)
@@ -91,14 +87,8 @@ class MainWindow(QMainWindow):
         self.now_playing_dock.setObjectName("NowPlayingDock")
         self.now_playing_dock.setWidget(now_playing_widget)
 
-        self.spectrum_widget = SpectrumWidget(self)
-        self.spectrum_dock = QDockWidget("Spectrum", self)
-        self.spectrum_dock.setObjectName("SpectrumDock")
-        self.spectrum_dock.setWidget(self.spectrum_widget)
-
         self.addDockWidget(Qt.TopDockWidgetArea, self.now_playing_dock)
-        self.splitDockWidget(self.now_playing_dock, self.spectrum_dock, Qt.Vertical)
-        self.splitDockWidget(self.spectrum_dock, self.playlist_dock, Qt.Vertical)
+        self.splitDockWidget(self.now_playing_dock, self.playlist_dock, Qt.Vertical)
 
         self.library_widget = LibraryPanel(self.settings, self)
         self.library_dock = QDockWidget("Library", self)
@@ -106,11 +96,14 @@ class MainWindow(QMainWindow):
         self.library_dock.setWidget(self.library_widget)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.library_dock)
 
-        self.peak_meter_widget = PeakMeterWidget(self)
-        self.peak_meter_dock = QDockWidget("Peak Meter", self)
-        self.peak_meter_dock.setObjectName("PeakMeterDock")
-        self.peak_meter_dock.setWidget(self.peak_meter_widget)
-        self.addDockWidget(Qt.RightDockWidgetArea, self.peak_meter_dock)
+        # The spectrum is the central widget rather than a dock: central
+        # widgets have no title bar and can't be dragged or floated, so this
+        # gives it a fixed position (bottom-center, below the playlist and
+        # right of the library sidebar) while still resizing automatically
+        # whenever the main window itself is resized - unlike a dock, there's
+        # no separate splitter drag that could resize it independently.
+        self.spectrum_widget = SpectrumWidget(self)
+        self.setCentralWidget(self.spectrum_widget)
 
         # resizeDocks needs real window geometry to establish proportions
         # correctly - calling it during construction (before the window is
@@ -158,14 +151,10 @@ class MainWindow(QMainWindow):
         self.player.set_volume(self.volume_slider.value())
 
     def _finish_layout_setup(self):
-        self.resizeDocks([self.now_playing_dock, self.spectrum_dock], [60, 150], Qt.Vertical)
-        library_w, peak_meter_w = 220, 90
-        main_w = max(self.width() - library_w - peak_meter_w, 400)
-        self.resizeDocks(
-            [self.library_dock, self.now_playing_dock, self.peak_meter_dock],
-            [library_w, main_w, peak_meter_w],
-            Qt.Horizontal,
-        )
+        # now_playing + playlist get fixed nominal heights; the spectrum
+        # (central widget) automatically receives whatever height remains.
+        self.resizeDocks([self.now_playing_dock, self.playlist_dock], [60, 300], Qt.Vertical)
+        self.resizeDocks([self.library_dock], [220], Qt.Horizontal)
         self._default_geometry = self.saveGeometry()
         self._default_state = self.saveState()
         self._restore_layout()
@@ -213,9 +202,7 @@ class MainWindow(QMainWindow):
         view_menu = self.menuBar().addMenu("&View")
         view_menu.addAction(self.playlist_dock.toggleViewAction())
         view_menu.addAction(self.now_playing_dock.toggleViewAction())
-        view_menu.addAction(self.spectrum_dock.toggleViewAction())
         view_menu.addAction(self.library_dock.toggleViewAction())
-        view_menu.addAction(self.peak_meter_dock.toggleViewAction())
         view_menu.addAction(self.transport_toolbar.toggleViewAction())
         view_menu.addSeparator()
 
@@ -244,9 +231,6 @@ class MainWindow(QMainWindow):
 
         self.player.audioSamples.connect(self.spectrum_widget.on_audio_samples)
         self.player.playingChanged.connect(self.spectrum_widget.set_active)
-
-        self.player.peakLevels.connect(self.peak_meter_widget.on_peak_levels)
-        self.player.playingChanged.connect(self.peak_meter_widget.set_active)
 
         self.library_widget.addTracksRequested.connect(self.model.add_paths)
         self.library_widget.playTracksRequested.connect(self._on_library_play_tracks)

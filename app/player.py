@@ -12,8 +12,7 @@ _DTYPE_FOR_SAMPLE_FORMAT = {
 }
 
 
-def _decode_audio_buffer(buf) -> tuple[np.ndarray, int, np.ndarray]:
-    """Returns (mono_samples, sample_rate, per_channel_peak) for one buffer."""
+def _audio_buffer_to_mono_float(buf) -> tuple[np.ndarray, int]:
     fmt = buf.format()
     dtype = _DTYPE_FOR_SAMPLE_FORMAT[fmt.sampleFormat()]
     raw = np.frombuffer(buf.constData(), dtype=dtype)
@@ -29,13 +28,8 @@ def _decode_audio_buffer(buf) -> tuple[np.ndarray, int, np.ndarray]:
 
     channels = fmt.channelCount()
     if channels > 1:
-        by_channel = data.reshape(-1, channels)
-        peaks = np.abs(by_channel).max(axis=0)
-        mono = by_channel.mean(axis=1)
-    else:
-        peaks = np.array([np.abs(data).max()], dtype=np.float32) if data.size else np.zeros(1, dtype=np.float32)
-        mono = data
-    return mono, fmt.sampleRate(), peaks
+        data = data.reshape(-1, channels).mean(axis=1)
+    return data, fmt.sampleRate()
 
 
 class PlayerEngine(QObject):
@@ -44,7 +38,6 @@ class PlayerEngine(QObject):
     playingChanged = Signal(bool)
     trackFinished = Signal()
     audioSamples = Signal(object, int)
-    peakLevels = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -72,11 +65,10 @@ class PlayerEngine(QObject):
         if not buf.isValid():
             return
         try:
-            samples, sample_rate, peaks = _decode_audio_buffer(buf)
+            samples, sample_rate = _audio_buffer_to_mono_float(buf)
         except (KeyError, ValueError):
             return
         self.audioSamples.emit(samples, sample_rate)
-        self.peakLevels.emit(peaks)
 
     def load(self, path: Path):
         self._player.setSource(QUrl.fromLocalFile(str(path)))

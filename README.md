@@ -10,10 +10,10 @@ with persistent layout, and a real-time spectrum analyzer.
 
 - Playback for mp3/flac/ogg/opus/m4a/wav/wv/ape via Qt Multimedia
 - Multi-column playlist (title/artist/album/duration) with tag reading via `mutagen`, click-to-sort, drag-and-drop
-- Dockable/floatable panels (Playlist, Now Playing, Spectrum, Library, Peak Meter) with layout persisted across restarts
-- Spectrum analyzer: Blackman-Harris windowed STFT, log-frequency bar mapping (80 bands, 20Hz-20kHz), Prussian Blue coloring with attack/release ballistics and peak-hold, 60fps
+- Dockable/floatable panels (Playlist, Now Playing, Library) with layout persisted across restarts
+- Spectrum analyzer fixed as the central panel (bottom-center, below the playlist) - resizes with the window but can't be dragged/floated like the docks
+- Spectrum: Blackman-Harris windowed STFT, log-frequency bar mapping (80 bands, 20Hz-20kHz), Prussian Blue coloring with attack/release ballistics and peak-hold, 60fps
 - Library panel: scans configured folders into an Artist/Album/Track tree, with filtering and double-click/context-menu to queue or play
-- Peak level meter: per-channel dBFS meter with green/yellow/red zones, peak-hold, and a latching clip indicator
 
 ## Running
 
@@ -44,6 +44,5 @@ startup. A PyPI wheel bundles its BLAS statically instead.
 - `app/playlist_model.py` - playlist table model and tag reading
 - `app/spectrum.py` - spectrum analyzer DSP engine and widget
 - `app/library.py` - library folder scanning and browser tree
-- `app/peak_meter.py` - per-channel peak level meter with clip detection
 - `app/main_window.py` - main window, docking, menus, transport controls
 - `scripts/build-appimage.sh` - builds the portable `.AppImage`
