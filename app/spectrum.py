@@ -218,5 +218,3 @@ class SpectrumWidget(QWidget):
                 continue
             x = frac_x * w
             painter.drawLine(int(x), 0, int(x), h)
-            label = f"{label_freq // 1000}k" if label_freq >= 1000 else str(label_freq)
-            painter.drawText(int(x) + 2, h - 4, label)
