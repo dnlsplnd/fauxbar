@@ -2,3 +2,13 @@ __pycache__/
 *.pyc
 .venv/
 *.egg-info/
+
+# AppImage build artifacts (rebuilt via scripts/build-appimage.sh, published
+# as GitHub Release assets rather than committed)
+.build-venv/
+build/
+dist/
+AppDir/
+*.spec
+*.AppImage
+appimagetool-x86_64.AppImage
