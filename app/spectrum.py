@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QWidget
 
 FFT_SIZE = 4096
 HOP_SIZE = FFT_SIZE // 4
-NUM_BARS = 40
+NUM_BARS = 80
 FREQ_MIN = 20.0
 FREQ_MAX = 20000.0
 DB_FLOOR = -90.0
@@ -138,7 +138,7 @@ class SpectrumWidget(QWidget):
         self.setMinimumHeight(90)
 
         self._timer = QTimer(self)
-        self._timer.setInterval(33)
+        self._timer.setInterval(round(1000 / 60))
         self._timer.timeout.connect(self._tick)
         self._timer.start()
 
