@@ -30,6 +30,7 @@ def _track_number_key(track):
 class LibraryPanel(QWidget):
     addTracksRequested = Signal(list)
     playTracksRequested = Signal(list)
+    propertiesRequested = Signal(list)
 
     def __init__(self, settings, parent=None):
         super().__init__(parent)
@@ -83,6 +84,9 @@ class LibraryPanel(QWidget):
             self._save_folders()
             self._rebuild_tree()
 
+    def refresh(self):
+        self._rebuild_tree()
+
     # ---- scanning / tree building ----
 
     def _rebuild_tree(self):
@@ -135,6 +139,8 @@ class LibraryPanel(QWidget):
         menu = QMenu(self)
         add_action = menu.addAction("Add to Playlist")
         play_action = menu.addAction("Add && Play")
+        menu.addSeparator()
+        properties_action = menu.addAction("Properties...")
         chosen = menu.exec(self.tree.viewport().mapToGlobal(pos))
         if chosen is None:
             return
@@ -145,6 +151,8 @@ class LibraryPanel(QWidget):
             self.addTracksRequested.emit(paths)
         elif chosen is play_action:
             self.playTracksRequested.emit(paths)
+        elif chosen is properties_action:
+            self.propertiesRequested.emit(paths)
 
     # ---- filtering ----
 

@@ -130,6 +130,12 @@ class PlaylistModel(QAbstractTableModel):
         self.tracks.sort(key=key, reverse=(order == Qt.DescendingOrder))
         self.layoutChanged.emit()
 
+    def refresh_rows(self, rows: list[int]):
+        for row in rows:
+            if 0 <= row < len(self.tracks):
+                self.tracks[row] = read_track(self.tracks[row].path)
+                self.dataChanged.emit(self.index(row, 0), self.index(row, len(COLUMNS) - 1))
+
     def track_at(self, row: int) -> Track | None:
         if 0 <= row < len(self.tracks):
             return self.tracks[row]

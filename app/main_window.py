@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QMainWindow,
+    QMenu,
     QPushButton,
     QSlider,
     QTableView,
@@ -18,10 +19,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.cover_art import CoverArtWidget
 from app.library import LibraryPanel
 from app.playlist_model import PlaylistModel, format_duration
 from app.player import PlayerEngine
 from app.spectrum import SpectrumWidget
+from app.track_properties import TrackPropertiesDialog
 
 
 class MainWindow(QMainWindow):
@@ -55,7 +58,7 @@ class MainWindow(QMainWindow):
         self.table = QTableView(self)
         self.table.setModel(self.model)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
         self.table.setSortingEnabled(True)
@@ -68,6 +71,8 @@ class MainWindow(QMainWindow):
         self.table.setColumnWidth(0, 40)
         self.table.setColumnWidth(4, 70)
         self.table.doubleClicked.connect(self._on_row_double_clicked)
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._on_playlist_context_menu)
 
         self.playlist_dock = QDockWidget("Playlist", self)
         self.playlist_dock.setObjectName("PlaylistDock")
@@ -95,6 +100,12 @@ class MainWindow(QMainWindow):
         self.library_dock.setObjectName("LibraryDock")
         self.library_dock.setWidget(self.library_widget)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.library_dock)
+
+        self.cover_art_widget = CoverArtWidget(self)
+        self.cover_art_dock = QDockWidget("Cover Art", self)
+        self.cover_art_dock.setObjectName("CoverArtDock")
+        self.cover_art_dock.setWidget(self.cover_art_widget)
+        self.splitDockWidget(self.library_dock, self.cover_art_dock, Qt.Vertical)
 
         # The spectrum is the central widget rather than a dock: central
         # widgets have no title bar and can't be dragged or floated, so this
@@ -155,6 +166,10 @@ class MainWindow(QMainWindow):
         # (central widget) automatically receives whatever height remains.
         self.resizeDocks([self.now_playing_dock, self.playlist_dock], [60, 300], Qt.Vertical)
         self.resizeDocks([self.library_dock], [220], Qt.Horizontal)
+        # Cover art defaults to roughly square (~220px, matching the sidebar
+        # width), with library taking whatever vertical space remains above it.
+        library_h = max(self.height() - 220, 200)
+        self.resizeDocks([self.library_dock, self.cover_art_dock], [library_h, 220], Qt.Vertical)
         self._default_geometry = self.saveGeometry()
         self._default_state = self.saveState()
         self._restore_layout()
@@ -203,6 +218,7 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self.playlist_dock.toggleViewAction())
         view_menu.addAction(self.now_playing_dock.toggleViewAction())
         view_menu.addAction(self.library_dock.toggleViewAction())
+        view_menu.addAction(self.cover_art_dock.toggleViewAction())
         view_menu.addAction(self.transport_toolbar.toggleViewAction())
         view_menu.addSeparator()
 
@@ -234,6 +250,7 @@ class MainWindow(QMainWindow):
 
         self.library_widget.addTracksRequested.connect(self.model.add_paths)
         self.library_widget.playTracksRequested.connect(self._on_library_play_tracks)
+        self.library_widget.propertiesRequested.connect(self._edit_track_properties)
 
     # ---- File handling ----
 
@@ -267,6 +284,36 @@ class MainWindow(QMainWindow):
         self.model.add_paths(paths)
         if self.model.rowCount() > start_row:
             self._play_row(start_row)
+
+    def _on_playlist_context_menu(self, pos):
+        rows = sorted({index.row() for index in self.table.selectionModel().selectedRows()})
+        if not rows:
+            return
+        menu = QMenu(self)
+        properties_action = menu.addAction("Properties...")
+        chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
+        if chosen is properties_action:
+            paths = [track.path for row in rows if (track := self.model.track_at(row))]
+            self._edit_track_properties(paths)
+
+    def _edit_track_properties(self, paths):
+        if not paths:
+            return
+        dialog = TrackPropertiesDialog(paths, self)
+        if dialog.exec() != TrackPropertiesDialog.Accepted:
+            return
+
+        edited = set(paths)
+        rows_to_refresh = [i for i, t in enumerate(self.model.tracks) if t.path in edited]
+        if rows_to_refresh:
+            self.model.refresh_rows(rows_to_refresh)
+            if self.current_row in rows_to_refresh:
+                track = self.model.track_at(self.current_row)
+                self._update_now_playing(track)
+                if track:
+                    self.setWindowTitle(f"{track.artist} - {track.title}" if track.artist else track.title)
+
+        self.library_widget.refresh()
 
     # ---- Playback control ----
 
@@ -335,10 +382,12 @@ class MainWindow(QMainWindow):
         if track is None:
             self.np_title_label.setText("Nothing playing")
             self.np_album_label.setText("")
+            self.cover_art_widget.set_track(None)
             return
         title_line = f"{track.artist} - {track.title}" if track.artist else track.title
         self.np_title_label.setText(title_line)
         self.np_album_label.setText(track.album)
+        self.cover_art_widget.set_track(track.path)
 
     # ---- Layout persistence ----
 
