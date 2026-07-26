@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.library import LibraryPanel
+from app.peak_meter import PeakMeterWidget
 from app.playlist_model import PlaylistModel, format_duration
 from app.player import PlayerEngine
 from app.spectrum import SpectrumWidget
@@ -51,6 +52,9 @@ class MainWindow(QMainWindow):
         # corner and squeezes any Left dock into a sliver at the bottom.
         self.setCorner(Qt.TopLeftCorner, Qt.LeftDockWidgetArea)
         self.setCorner(Qt.BottomLeftCorner, Qt.LeftDockWidgetArea)
+        # Same fix, mirrored, for the right side (Peak Meter dock).
+        self.setCorner(Qt.TopRightCorner, Qt.RightDockWidgetArea)
+        self.setCorner(Qt.BottomRightCorner, Qt.RightDockWidgetArea)
 
         self.table = QTableView(self)
         self.table.setModel(self.model)
@@ -102,6 +106,12 @@ class MainWindow(QMainWindow):
         self.library_dock.setWidget(self.library_widget)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.library_dock)
 
+        self.peak_meter_widget = PeakMeterWidget(self)
+        self.peak_meter_dock = QDockWidget("Peak Meter", self)
+        self.peak_meter_dock.setObjectName("PeakMeterDock")
+        self.peak_meter_dock.setWidget(self.peak_meter_widget)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.peak_meter_dock)
+
         # resizeDocks needs real window geometry to establish proportions
         # correctly - calling it during construction (before the window is
         # shown) causes the requested sizes to be ignored. Defer it, and
@@ -149,8 +159,12 @@ class MainWindow(QMainWindow):
 
     def _finish_layout_setup(self):
         self.resizeDocks([self.now_playing_dock, self.spectrum_dock], [60, 150], Qt.Vertical)
+        library_w, peak_meter_w = 220, 90
+        main_w = max(self.width() - library_w - peak_meter_w, 400)
         self.resizeDocks(
-            [self.library_dock, self.now_playing_dock], [220, max(self.width() - 220, 400)], Qt.Horizontal
+            [self.library_dock, self.now_playing_dock, self.peak_meter_dock],
+            [library_w, main_w, peak_meter_w],
+            Qt.Horizontal,
         )
         self._default_geometry = self.saveGeometry()
         self._default_state = self.saveState()
@@ -201,6 +215,7 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self.now_playing_dock.toggleViewAction())
         view_menu.addAction(self.spectrum_dock.toggleViewAction())
         view_menu.addAction(self.library_dock.toggleViewAction())
+        view_menu.addAction(self.peak_meter_dock.toggleViewAction())
         view_menu.addAction(self.transport_toolbar.toggleViewAction())
         view_menu.addSeparator()
 
@@ -229,6 +244,9 @@ class MainWindow(QMainWindow):
 
         self.player.audioSamples.connect(self.spectrum_widget.on_audio_samples)
         self.player.playingChanged.connect(self.spectrum_widget.set_active)
+
+        self.player.peakLevels.connect(self.peak_meter_widget.on_peak_levels)
+        self.player.playingChanged.connect(self.peak_meter_widget.set_active)
 
         self.library_widget.addTracksRequested.connect(self.model.add_paths)
         self.library_widget.playTracksRequested.connect(self._on_library_play_tracks)

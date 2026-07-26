@@ -166,10 +166,14 @@ class SpectrumWidget(QWidget):
         self._peak_hold = np.where(new_peak, 0.0, self._peak_hold + dt)
         peak_release_coeff = math.exp(-dt / PEAK_RELEASE_TAU)
         held = self._peak_hold <= PEAK_HOLD_TIME
+        # Decay toward DB_FLOOR (not toward 0 dB): blend the dB value itself
+        # toward the floor, rather than scaling it - scaling a negative dB
+        # number by a sub-1 factor moves it *up* toward 0, not down.
+        decayed = DB_FLOOR + (self._peak - DB_FLOOR) * peak_release_coeff
         self._peak = np.where(
             new_peak,
             self._display,
-            np.where(held, self._peak, np.maximum(self._display, self._peak * peak_release_coeff)),
+            np.where(held, self._peak, np.maximum(self._display, decayed)),
         )
 
         self.update()
