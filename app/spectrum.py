@@ -8,10 +8,12 @@ from PySide6.QtWidgets import QWidget
 
 FFT_SIZE = 4096
 HOP_SIZE = FFT_SIZE // 4
-NUM_BARS = 80
+NUM_BARS = 40
 FREQ_MIN = 20.0
 FREQ_MAX = 20000.0
 DB_FLOOR = -90.0
+
+PRUSSIAN_BLUE = QColor("#003153")
 
 ATTACK_TAU = 0.008
 RELEASE_TAU = 0.20
@@ -173,9 +175,11 @@ class SpectrumWidget(QWidget):
         self.update()
 
     def _color_for_frac(self, frac: float) -> QColor:
-        # green -> yellow -> red as level rises toward 0 dB
-        hue = 0.33 * (1.0 - frac)
-        return QColor.fromHsvF(hue, 0.85, 0.95)
+        # Fixed Prussian Blue hue/saturation; brightness scales with level so
+        # the loudest bars land on the exact named color and quieter ones
+        # fade toward black, rather than sweeping through other hues.
+        hue, sat, value, _ = PRUSSIAN_BLUE.getHsvF()
+        return QColor.fromHsvF(hue, sat, value * (0.08 + 0.92 * frac))
 
     def paintEvent(self, event):
         painter = QPainter(self)
