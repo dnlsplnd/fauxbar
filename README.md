@@ -10,8 +10,9 @@ with persistent layout, and a real-time spectrum analyzer.
 
 - Playback for mp3/flac/ogg/opus/m4a/wav/wv/ape via Qt Multimedia
 - Multi-column playlist (title/artist/album/duration) with tag reading via `mutagen`, click-to-sort, drag-and-drop
-- Dockable/floatable panels (Playlist, Now Playing, Spectrum) with layout persisted across restarts
+- Dockable/floatable panels (Playlist, Now Playing, Spectrum, Library) with layout persisted across restarts
 - Spectrum analyzer: Blackman-Harris windowed STFT, log-frequency bar mapping, dB-scaled with attack/release ballistics and peak-hold
+- Library panel: scans configured folders into an Artist/Album/Track tree, with filtering and double-click/context-menu to queue or play
 
 ## Running
 
@@ -27,4 +28,5 @@ python3 main.py
 - `app/player.py` - playback engine wrapping `QMediaPlayer`/`QAudioOutput`, taps decoded PCM via `QAudioBufferOutput` for analysis
 - `app/playlist_model.py` - playlist table model and tag reading
 - `app/spectrum.py` - spectrum analyzer DSP engine and widget
+- `app/library.py` - library folder scanning and browser tree
 - `app/main_window.py` - main window, docking, menus, transport controls

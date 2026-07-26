@@ -147,3 +147,24 @@ QToolBar {
     border: none;
     spacing: 4px;
 }
+
+QTreeWidget {
+    background-color: #1c1c1c;
+    color: #d8d8d8;
+    alternate-background-color: #222222;
+    selection-background-color: #3a6ea5;
+    selection-color: #ffffff;
+    border: 1px solid #151515;
+}
+
+QTreeWidget::item {
+    padding: 1px 2px;
+}
+
+QLineEdit {
+    background-color: #1c1c1c;
+    color: #d8d8d8;
+    border: 1px solid #151515;
+    border-radius: 2px;
+    padding: 3px 5px;
+}

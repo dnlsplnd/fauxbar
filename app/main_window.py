@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.library import LibraryPanel
 from app.playlist_model import PlaylistModel, format_duration
 from app.player import PlayerEngine
 from app.spectrum import SpectrumWidget
@@ -41,14 +42,15 @@ class MainWindow(QMainWindow):
         self._wire_signals()
         self._update_status_bar()
 
-        self._default_geometry = self.saveGeometry()
-        self._default_state = self.saveState()
-        self._restore_layout()
-
     # ---- UI construction ----
 
     def _build_ui(self):
         self.setDockNestingEnabled(True)
+        # Give the left dock area the full window height (both corners) rather
+        # than the Qt default, which lets Top-area content claim the top-left
+        # corner and squeezes any Left dock into a sliver at the bottom.
+        self.setCorner(Qt.TopLeftCorner, Qt.LeftDockWidgetArea)
+        self.setCorner(Qt.BottomLeftCorner, Qt.LeftDockWidgetArea)
 
         self.table = QTableView(self)
         self.table.setModel(self.model)
@@ -93,7 +95,19 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.TopDockWidgetArea, self.now_playing_dock)
         self.splitDockWidget(self.now_playing_dock, self.spectrum_dock, Qt.Vertical)
         self.splitDockWidget(self.spectrum_dock, self.playlist_dock, Qt.Vertical)
-        self.resizeDocks([self.now_playing_dock, self.spectrum_dock], [60, 150], Qt.Vertical)
+
+        self.library_widget = LibraryPanel(self.settings, self)
+        self.library_dock = QDockWidget("Library", self)
+        self.library_dock.setObjectName("LibraryDock")
+        self.library_dock.setWidget(self.library_widget)
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.library_dock)
+
+        # resizeDocks needs real window geometry to establish proportions
+        # correctly - calling it during construction (before the window is
+        # shown) causes the requested sizes to be ignored. Defer it, and
+        # capture the "factory default" layout/restore any saved one only
+        # after that, so Reset Layout snaps back to the corrected sizes.
+        QTimer.singleShot(0, self._finish_layout_setup)
 
         self.transport = QWidget(self)
         self.transport.setObjectName("TransportBar")
@@ -132,6 +146,15 @@ class MainWindow(QMainWindow):
         self.addToolBar(Qt.BottomToolBarArea, self.transport_toolbar)
 
         self.player.set_volume(self.volume_slider.value())
+
+    def _finish_layout_setup(self):
+        self.resizeDocks([self.now_playing_dock, self.spectrum_dock], [60, 150], Qt.Vertical)
+        self.resizeDocks(
+            [self.library_dock, self.now_playing_dock], [220, max(self.width() - 220, 400)], Qt.Horizontal
+        )
+        self._default_geometry = self.saveGeometry()
+        self._default_state = self.saveState()
+        self._restore_layout()
 
     def _build_menu(self):
         file_menu = self.menuBar().addMenu("&File")
@@ -177,6 +200,7 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self.playlist_dock.toggleViewAction())
         view_menu.addAction(self.now_playing_dock.toggleViewAction())
         view_menu.addAction(self.spectrum_dock.toggleViewAction())
+        view_menu.addAction(self.library_dock.toggleViewAction())
         view_menu.addAction(self.transport_toolbar.toggleViewAction())
         view_menu.addSeparator()
 
@@ -206,6 +230,9 @@ class MainWindow(QMainWindow):
         self.player.audioSamples.connect(self.spectrum_widget.on_audio_samples)
         self.player.playingChanged.connect(self.spectrum_widget.set_active)
 
+        self.library_widget.addTracksRequested.connect(self.model.add_paths)
+        self.library_widget.playTracksRequested.connect(self._on_library_play_tracks)
+
     # ---- File handling ----
 
     def _add_files_dialog(self):
@@ -232,6 +259,12 @@ class MainWindow(QMainWindow):
         paths = [Path(u.toLocalFile()) for u in event.mimeData().urls() if u.isLocalFile()]
         if paths:
             self.model.add_paths(paths)
+
+    def _on_library_play_tracks(self, paths):
+        start_row = self.model.rowCount()
+        self.model.add_paths(paths)
+        if self.model.rowCount() > start_row:
+            self._play_row(start_row)
 
     # ---- Playback control ----
 
