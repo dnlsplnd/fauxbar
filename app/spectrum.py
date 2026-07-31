@@ -14,6 +14,10 @@ FREQ_MAX = 20000.0
 DB_FLOOR = -90.0
 
 PRUSSIAN_BLUE = QColor("#003153")
+BRIGHTNESS_BOOST = 1.35
+
+AXIS_LABEL_FREQS = (20, 100, 1000, 10000, 20000)
+AXIS_HEIGHT = 16
 
 ATTACK_TAU = 0.008
 RELEASE_TAU = 0.20
@@ -135,7 +139,7 @@ class SpectrumWidget(QWidget):
         self._active = False
         self._last_tick = None
 
-        self.setMinimumHeight(90)
+        self.setMinimumHeight(90 + AXIS_HEIGHT)
 
         self._timer = QTimer(self)
         self._timer.setInterval(round(1000 / 60))
@@ -180,17 +184,26 @@ class SpectrumWidget(QWidget):
 
     def _color_for_frac(self, frac: float) -> QColor:
         # Fixed Prussian Blue hue/saturation; brightness scales with level so
-        # the loudest bars land on the exact named color and quieter ones
-        # fade toward black, rather than sweeping through other hues.
+        # the loudest bars land near the named color (boosted a bit, since the
+        # raw color is quite dark) and quieter ones fade toward black, rather
+        # than sweeping through other hues.
         hue, sat, value, _ = PRUSSIAN_BLUE.getHsvF()
+        value = min(1.0, value * BRIGHTNESS_BOOST)
         return QColor.fromHsvF(hue, sat, value * (0.08 + 0.92 * frac))
+
+    @staticmethod
+    def _format_freq(freq_hz: float) -> str:
+        if freq_hz >= 1000:
+            khz = freq_hz / 1000
+            return f"{khz:g} kHz"
+        return f"{freq_hz:g} Hz"
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor("#181818"))
 
         w = self.width()
-        h = self.height()
+        h = self.height() - AXIS_HEIGHT
         n = self.engine.num_bars
         bar_w = w / n
         span = -DB_FLOOR
@@ -205,16 +218,31 @@ class SpectrumWidget(QWidget):
             peak_y = h - peak_frac * h
             painter.fillRect(QRectF(x, peak_y - 1.5, max(bar_w - 1, 1), 1.5), QColor("#e8e8e8"))
 
-        painter.setPen(QColor("#555555"))
-        for label_freq in (100, 1000, 10000):
-            if label_freq <= 0:
-                continue
-            log_min = math.log10(self.engine.freq_min)
-            log_max = math.log10(min(self.engine.freq_max, (self.engine.sample_rate or 44100) / 2))
-            if log_max <= log_min:
-                continue
+        log_min = math.log10(self.engine.freq_min)
+        log_max = math.log10(min(self.engine.freq_max, (self.engine.sample_rate or 44100) / 2))
+        if log_max <= log_min:
+            return
+
+        metrics = painter.fontMetrics()
+        text_y = h + metrics.ascent() + (AXIS_HEIGHT - metrics.height()) // 2
+
+        for label_freq in AXIS_LABEL_FREQS:
             frac_x = (math.log10(label_freq) - log_min) / (log_max - log_min)
             if not 0.0 <= frac_x <= 1.0:
                 continue
             x = frac_x * w
+
+            painter.setPen(QColor("#555555"))
             painter.drawLine(int(x), 0, int(x), h)
+
+            label = self._format_freq(label_freq)
+            label_w = metrics.horizontalAdvance(label)
+            if frac_x <= 0.02:
+                text_x = x
+            elif frac_x >= 0.98:
+                text_x = x - label_w
+            else:
+                text_x = x - label_w / 2
+
+            painter.setPen(QColor("#888888"))
+            painter.drawText(int(text_x), text_y, label)
