@@ -2,7 +2,16 @@ from pathlib import Path
 
 import numpy as np
 from PySide6.QtCore import QObject, QUrl, Signal
-from PySide6.QtMultimedia import QAudioBufferOutput, QAudioFormat, QAudioOutput, QMediaPlayer
+from PySide6.QtMultimedia import (
+    QAudioBufferOutput,
+    QAudioDevice,
+    QAudioFormat,
+    QAudioOutput,
+    QMediaDevices,
+    QMediaPlayer,
+)
+
+OUTPUT_DEVICE_ID_KEY = "playback/output_device_id"
 
 _DTYPE_FOR_SAMPLE_FORMAT = {
     QAudioFormat.SampleFormat.UInt8: np.uint8,
@@ -93,6 +102,22 @@ class PlayerEngine(QObject):
 
     def set_volume(self, percent: int):
         self._output.setVolume(max(0.0, min(1.0, percent / 100.0)))
+
+    def available_output_devices(self) -> list[QAudioDevice]:
+        return QMediaDevices.audioOutputs()
+
+    def set_output_device(self, device: QAudioDevice):
+        self._output.setDevice(device)
+
+    def restore_output_device(self, settings):
+        device_id = settings.value(OUTPUT_DEVICE_ID_KEY)
+        if not device_id:
+            return
+        device_id = bytes(device_id)
+        for device in self.available_output_devices():
+            if bytes(device.id()) == device_id:
+                self.set_output_device(device)
+                return
 
     def is_playing(self) -> bool:
         return self._player.playbackState() == QMediaPlayer.PlayingState

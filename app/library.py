@@ -87,6 +87,14 @@ class LibraryPanel(QWidget):
     def refresh(self):
         self._rebuild_tree()
 
+    def folders(self) -> list[str]:
+        return list(self._folders)
+
+    def set_folders(self, folders: list[str]):
+        self._folders = list(folders)
+        self._save_folders()
+        self._rebuild_tree()
+
     # ---- scanning / tree building ----
 
     def _rebuild_tree(self):

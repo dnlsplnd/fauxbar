@@ -6,23 +6,35 @@ from PySide6.QtCore import QRectF, QTimer
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QWidget
 
-FFT_SIZE = 4096
-HOP_SIZE = FFT_SIZE // 4
-NUM_BARS = 80
 FREQ_MIN = 20.0
 FREQ_MAX = 20000.0
-DB_FLOOR = -90.0
-
-PRUSSIAN_BLUE = QColor("#003153")
-BRIGHTNESS_BOOST = 1.35
 
 AXIS_LABEL_FREQS = (20, 100, 1000, 10000, 20000)
 AXIS_HEIGHT = 16
 
-ATTACK_TAU = 0.008
-RELEASE_TAU = 0.20
-PEAK_HOLD_TIME = 0.8
 PEAK_RELEASE_TAU = 0.6
+
+# Settings keys and defaults - read by SpectrumWidget, written by the
+# Preferences dialog's Display > Spectrum and Advanced pages.
+SETTINGS_COLOR = "spectrum/color"
+SETTINGS_BRIGHTNESS_PERCENT = "spectrum/brightness_percent"
+SETTINGS_BARS = "spectrum/bars"
+SETTINGS_FFT_SIZE = "spectrum/fft_size"
+SETTINGS_DB_FLOOR = "spectrum/db_floor"
+SETTINGS_ATTACK_MS = "spectrum/attack_ms"
+SETTINGS_RELEASE_MS = "spectrum/release_ms"
+SETTINGS_PEAK_HOLD_MS = "spectrum/peak_hold_ms"
+
+DEFAULT_COLOR = "#003153"  # Prussian Blue
+DEFAULT_BRIGHTNESS_PERCENT = 135
+DEFAULT_BARS = 80
+DEFAULT_FFT_SIZE = 4096
+DEFAULT_DB_FLOOR = -90.0
+DEFAULT_ATTACK_MS = 8
+DEFAULT_RELEASE_MS = 200
+DEFAULT_PEAK_HOLD_MS = 800
+
+FFT_SIZE_CHOICES = (2048, 4096, 8192, 16384)
 
 
 def _blackman_harris(n: int) -> np.ndarray:
@@ -43,17 +55,19 @@ class SpectrumEngine:
 
     def __init__(
         self,
-        fft_size: int = FFT_SIZE,
-        hop_size: int = HOP_SIZE,
-        num_bars: int = NUM_BARS,
+        fft_size: int = DEFAULT_FFT_SIZE,
+        hop_size: int | None = None,
+        num_bars: int = DEFAULT_BARS,
         freq_min: float = FREQ_MIN,
         freq_max: float = FREQ_MAX,
+        db_floor: float = DEFAULT_DB_FLOOR,
     ):
         self.fft_size = fft_size
-        self.hop_size = hop_size
+        self.hop_size = hop_size or fft_size // 4
         self.num_bars = num_bars
         self.freq_min = freq_min
         self.freq_max = freq_max
+        self.db_floor = db_floor
 
         self._window = _blackman_harris(fft_size)
         # Coherent-gain correction: recovers true amplitude of a windowed sinusoid
@@ -63,7 +77,7 @@ class SpectrumEngine:
         self._buffer = np.zeros(0, dtype=np.float32)
         self._sample_rate = None
         self._bar_plan = None
-        self._latest_db = np.full(num_bars, DB_FLOOR, dtype=np.float32)
+        self._latest_db = np.full(num_bars, db_floor, dtype=np.float32)
 
     def _ensure_bar_plan(self, sample_rate: int):
         if self._sample_rate == sample_rate and self._bar_plan is not None:
@@ -119,7 +133,7 @@ class SpectrumEngine:
             else:
                 _, lo, hi = entry
                 bars[i] = np.max(db[lo : hi + 1])
-        self._latest_db = np.clip(bars, DB_FLOOR, 0.0)
+        self._latest_db = np.clip(bars, self.db_floor, 0.0)
 
     def latest(self) -> np.ndarray:
         return self._latest_db
@@ -130,14 +144,13 @@ class SpectrumEngine:
 
 
 class SpectrumWidget(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, settings, parent=None):
         super().__init__(parent)
-        self.engine = SpectrumEngine()
-        self._display = np.full(self.engine.num_bars, DB_FLOOR, dtype=np.float32)
-        self._peak = np.full(self.engine.num_bars, DB_FLOOR, dtype=np.float32)
-        self._peak_hold = np.zeros(self.engine.num_bars, dtype=np.float32)
+        self.settings = settings
         self._active = False
         self._last_tick = None
+
+        self._load_config()
 
         self.setMinimumHeight(90 + AXIS_HEIGHT)
 
@@ -145,6 +158,37 @@ class SpectrumWidget(QWidget):
         self._timer.setInterval(round(1000 / 60))
         self._timer.timeout.connect(self._tick)
         self._timer.start()
+
+    def _load_config(self):
+        s = self.settings
+        self.color = QColor(s.value(SETTINGS_COLOR, DEFAULT_COLOR, type=str))
+        brightness_percent = s.value(SETTINGS_BRIGHTNESS_PERCENT, DEFAULT_BRIGHTNESS_PERCENT, type=int)
+        self.brightness_boost = brightness_percent / 100.0
+        num_bars = s.value(SETTINGS_BARS, DEFAULT_BARS, type=int)
+        fft_size = s.value(SETTINGS_FFT_SIZE, DEFAULT_FFT_SIZE, type=int)
+        db_floor = s.value(SETTINGS_DB_FLOOR, DEFAULT_DB_FLOOR, type=float)
+        self.attack_tau = max(s.value(SETTINGS_ATTACK_MS, DEFAULT_ATTACK_MS, type=int), 1) / 1000.0
+        self.release_tau = max(s.value(SETTINGS_RELEASE_MS, DEFAULT_RELEASE_MS, type=int), 1) / 1000.0
+        self.peak_hold_s = s.value(SETTINGS_PEAK_HOLD_MS, DEFAULT_PEAK_HOLD_MS, type=int) / 1000.0
+
+        self.engine = SpectrumEngine(
+            fft_size=fft_size,
+            hop_size=fft_size // 4,
+            num_bars=num_bars,
+            freq_min=FREQ_MIN,
+            freq_max=FREQ_MAX,
+            db_floor=db_floor,
+        )
+        self._display = np.full(num_bars, db_floor, dtype=np.float32)
+        self._peak = np.full(num_bars, db_floor, dtype=np.float32)
+        self._peak_hold = np.zeros(num_bars, dtype=np.float32)
+
+    def apply_settings(self):
+        """Reloads DSP/appearance config from settings. Called by the
+        Preferences dialog on Apply/OK; resets the bar smoothing state
+        since the bar count or FFT size may have changed."""
+        self._load_config()
+        self.update()
 
     def on_audio_samples(self, samples, sample_rate):
         self.engine.ingest(samples, sample_rate)
@@ -158,10 +202,11 @@ class SpectrumWidget(QWidget):
         dt = max(now - self._last_tick, 1e-3) if self._last_tick is not None else 1 / 30
         self._last_tick = now
 
-        targets = self.engine.latest() if self._active else np.full_like(self._display, DB_FLOOR)
+        db_floor = self.engine.db_floor
+        targets = self.engine.latest() if self._active else np.full_like(self._display, db_floor)
 
-        attack_coeff = math.exp(-dt / ATTACK_TAU)
-        release_coeff = math.exp(-dt / RELEASE_TAU)
+        attack_coeff = math.exp(-dt / self.attack_tau)
+        release_coeff = math.exp(-dt / self.release_tau)
         rising = targets > self._display
         coeff = np.where(rising, attack_coeff, release_coeff)
         self._display = targets * (1 - coeff) + self._display * coeff
@@ -169,11 +214,11 @@ class SpectrumWidget(QWidget):
         new_peak = self._display >= self._peak
         self._peak_hold = np.where(new_peak, 0.0, self._peak_hold + dt)
         peak_release_coeff = math.exp(-dt / PEAK_RELEASE_TAU)
-        held = self._peak_hold <= PEAK_HOLD_TIME
-        # Decay toward DB_FLOOR (not toward 0 dB): blend the dB value itself
+        held = self._peak_hold <= self.peak_hold_s
+        # Decay toward db_floor (not toward 0 dB): blend the dB value itself
         # toward the floor, rather than scaling it - scaling a negative dB
         # number by a sub-1 factor moves it *up* toward 0, not down.
-        decayed = DB_FLOOR + (self._peak - DB_FLOOR) * peak_release_coeff
+        decayed = db_floor + (self._peak - db_floor) * peak_release_coeff
         self._peak = np.where(
             new_peak,
             self._display,
@@ -183,12 +228,12 @@ class SpectrumWidget(QWidget):
         self.update()
 
     def _color_for_frac(self, frac: float) -> QColor:
-        # Fixed Prussian Blue hue/saturation; brightness scales with level so
-        # the loudest bars land near the named color (boosted a bit, since the
-        # raw color is quite dark) and quieter ones fade toward black, rather
-        # than sweeping through other hues.
-        hue, sat, value, _ = PRUSSIAN_BLUE.getHsvF()
-        value = min(1.0, value * BRIGHTNESS_BOOST)
+        # Fixed hue/saturation from the configured color; brightness scales
+        # with level so the loudest bars land near the named color (boosted
+        # a bit by default, since Prussian Blue itself is quite dark) and
+        # quieter ones fade toward black, rather than sweeping through hues.
+        hue, sat, value, _ = self.color.getHsvF()
+        value = min(1.0, value * self.brightness_boost)
         return QColor.fromHsvF(hue, sat, value * (0.08 + 0.92 * frac))
 
     @staticmethod
@@ -206,15 +251,15 @@ class SpectrumWidget(QWidget):
         h = self.height() - AXIS_HEIGHT
         n = self.engine.num_bars
         bar_w = w / n
-        span = -DB_FLOOR
+        span = -self.engine.db_floor
 
         for i in range(n):
-            frac = max(0.0, min(1.0, (self._display[i] - DB_FLOOR) / span))
+            frac = max(0.0, min(1.0, (self._display[i] - self.engine.db_floor) / span))
             bar_h = frac * h
             x = i * bar_w
             painter.fillRect(QRectF(x, h - bar_h, max(bar_w - 1, 1), bar_h), self._color_for_frac(frac))
 
-            peak_frac = max(0.0, min(1.0, (self._peak[i] - DB_FLOOR) / span))
+            peak_frac = max(0.0, min(1.0, (self._peak[i] - self.engine.db_floor) / span))
             peak_y = h - peak_frac * h
             painter.fillRect(QRectF(x, peak_y - 1.5, max(bar_w - 1, 1), 1.5), QColor("#e8e8e8"))
 

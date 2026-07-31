@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMenu,
+    QMessageBox,
     QPushButton,
     QSlider,
     QTableView,
@@ -23,6 +24,7 @@ from app.cover_art import CoverArtWidget
 from app.library import LibraryPanel
 from app.playlist_model import PlaylistModel, format_duration
 from app.player import PlayerEngine
+from app.settings_dialog import SettingsDialog
 from app.spectrum import SpectrumWidget
 from app.track_properties import TrackPropertiesDialog
 
@@ -113,7 +115,7 @@ class MainWindow(QMainWindow):
         # right of the library sidebar) while still resizing automatically
         # whenever the main window itself is resized - unlike a dock, there's
         # no separate splitter drag that could resize it independently.
-        self.spectrum_widget = SpectrumWidget(self)
+        self.spectrum_widget = SpectrumWidget(self.settings, self)
         self.setCentralWidget(self.spectrum_widget)
 
         # resizeDocks needs real window geometry to establish proportions
@@ -148,7 +150,7 @@ class MainWindow(QMainWindow):
 
         self.volume_slider = QSlider(Qt.Horizontal)
         self.volume_slider.setRange(0, 100)
-        self.volume_slider.setValue(80)
+        self.volume_slider.setValue(self.settings.value("playback/default_volume", 80, type=int))
         self.volume_slider.setFixedWidth(100)
         transport_layout.addWidget(QLabel("Vol"))
         transport_layout.addWidget(self.volume_slider)
@@ -160,6 +162,7 @@ class MainWindow(QMainWindow):
         self.addToolBar(Qt.BottomToolBarArea, self.transport_toolbar)
 
         self.player.set_volume(self.volume_slider.value())
+        self.player.restore_output_device(self.settings)
 
     def _finish_layout_setup(self):
         # now_playing + playlist get fixed nominal heights; the spectrum
@@ -226,6 +229,13 @@ class MainWindow(QMainWindow):
         reset_layout_action.triggered.connect(self._reset_layout)
         view_menu.addAction(reset_layout_action)
 
+        settings_menu = self.menuBar().addMenu("&Settings")
+
+        preferences_action = QAction("Preferences...", self)
+        preferences_action.setShortcut(QKeySequence("Ctrl+P"))
+        preferences_action.triggered.connect(self._open_preferences)
+        settings_menu.addAction(preferences_action)
+
     def _wire_signals(self):
         self.btn_play.clicked.connect(self._on_play_pause_clicked)
         self.btn_stop.clicked.connect(self._on_stop_clicked)
@@ -252,6 +262,18 @@ class MainWindow(QMainWindow):
         self.library_widget.playTracksRequested.connect(self._on_library_play_tracks)
         self.library_widget.propertiesRequested.connect(self._edit_track_properties)
 
+    # ---- Settings ----
+
+    def _open_preferences(self):
+        dialog = SettingsDialog(self, self)
+        dialog.exec()
+
+    def _track_title_text(self, track) -> str:
+        show_artist = self.settings.value("display/show_artist_in_title", True, type=bool)
+        if show_artist and track.artist:
+            return f"{track.artist} - {track.title}"
+        return track.title
+
     # ---- File handling ----
 
     def _add_files_dialog(self):
@@ -265,6 +287,13 @@ class MainWindow(QMainWindow):
             self.model.add_paths([Path(folder)])
 
     def _clear_playlist(self):
+        confirm = self.settings.value("playback/confirm_clear", False, type=bool)
+        if confirm and self.model.rowCount():
+            reply = QMessageBox.question(
+                self, "Clear Playlist", "Clear the current playlist?", QMessageBox.Yes | QMessageBox.No
+            )
+            if reply != QMessageBox.Yes:
+                return
         self.player.stop()
         self.model.clear()
         self.current_row = -1
@@ -311,7 +340,7 @@ class MainWindow(QMainWindow):
                 track = self.model.track_at(self.current_row)
                 self._update_now_playing(track)
                 if track:
-                    self.setWindowTitle(f"{track.artist} - {track.title}" if track.artist else track.title)
+                    self.setWindowTitle(self._track_title_text(track))
 
         self.library_widget.refresh()
 
@@ -328,7 +357,7 @@ class MainWindow(QMainWindow):
         self.player.load(track.path)
         self.player.play()
         self.table.selectRow(row)
-        self.setWindowTitle(f"{track.artist} - {track.title}" if track.artist else track.title)
+        self.setWindowTitle(self._track_title_text(track))
         self._update_now_playing(track)
 
     def _play_next(self):
@@ -384,8 +413,7 @@ class MainWindow(QMainWindow):
             self.np_album_label.setText("")
             self.cover_art_widget.set_track(None)
             return
-        title_line = f"{track.artist} - {track.title}" if track.artist else track.title
-        self.np_title_label.setText(title_line)
+        self.np_title_label.setText(self._track_title_text(track))
         self.np_album_label.setText(track.album)
         self.cover_art_widget.set_track(track.path)
 
