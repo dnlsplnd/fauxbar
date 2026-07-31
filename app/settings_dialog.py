@@ -131,8 +131,14 @@ class SpectrumPage(QWidget):
             self._update_color_btn()
 
     def _update_color_btn(self):
+        # A stylesheet with only background-color still lets the native style
+        # paint its usual button bevel/gradient over it - adding an explicit
+        # border switches Qt to fully custom rendering, so the swatch shows
+        # the exact color rather than a shaded approximation of it.
         self.color_btn.setText(self._color.name())
-        self.color_btn.setStyleSheet(f"background-color: {self._color.name()}; color: #ffffff;")
+        self.color_btn.setStyleSheet(
+            f"background-color: {self._color.name()}; color: #ffffff; border: 1px solid #151515;"
+        )
 
     def apply(self, settings):
         settings.setValue(spectrum.SETTINGS_COLOR, self._color.name())
