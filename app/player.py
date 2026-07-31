@@ -1,4 +1,4 @@
-from pathlib import Path
+import os
 
 import numpy as np
 from PySide6.QtCore import QObject, QUrl, Signal
@@ -8,10 +8,28 @@ from PySide6.QtMultimedia import (
     QAudioFormat,
     QAudioOutput,
     QMediaDevices,
+    QMediaMetaData,
     QMediaPlayer,
 )
 
 OUTPUT_DEVICE_ID_KEY = "playback/output_device_id"
+HW_ACCEL_ENABLED_KEY = "playback/hw_accel_enabled"
+
+
+def apply_hw_accel_setting(settings):
+    """Must run before the first QMediaPlayer is constructed, since that's
+    when the FFmpeg backend plugin loads and reads this env var - so this
+    has to happen before MainWindow (and its PlayerEngine) exist, not just
+    before playback starts.
+
+    fauxbar only ever decodes audio codecs, none of which the VA-API path
+    covers (it only accelerates h264/hevc/vp8/vp9/mjpeg), so disabling this
+    doesn't cost any real decode performance here - it mainly skips the
+    VA-API/VDPAU driver probing (and its log spam) at startup.
+    """
+    enabled = settings.value(HW_ACCEL_ENABLED_KEY, True, type=bool)
+    if not enabled:
+        os.environ["QT_FFMPEG_DECODING_HW_DEVICE_TYPES"] = ""
 
 _DTYPE_FOR_SAMPLE_FORMAT = {
     QAudioFormat.SampleFormat.UInt8: np.uint8,
@@ -47,6 +65,7 @@ class PlayerEngine(QObject):
     playingChanged = Signal(bool)
     trackFinished = Signal()
     audioSamples = Signal(object, int)
+    streamTitleChanged = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -62,6 +81,7 @@ class PlayerEngine(QObject):
         self._player.durationChanged.connect(lambda d: self.durationChanged.emit(int(d)))
         self._player.playbackStateChanged.connect(self._on_state_changed)
         self._player.mediaStatusChanged.connect(self._on_media_status_changed)
+        self._player.metaDataChanged.connect(self._on_meta_data_changed)
 
     def _on_state_changed(self, state):
         self.playingChanged.emit(state == QMediaPlayer.PlayingState)
@@ -69,6 +89,15 @@ class PlayerEngine(QObject):
     def _on_media_status_changed(self, status):
         if status == QMediaPlayer.MediaStatus.EndOfMedia:
             self.trackFinished.emit()
+
+    def _on_meta_data_changed(self):
+        # Icecast/Shoutcast stations push now-playing info (station and
+        # current song) as ICY metadata, which Qt surfaces as the Title key -
+        # local files have their own title from playlist tags, so this is
+        # only meaningful for streams, which the caller filters for.
+        title = self._player.metaData().value(QMediaMetaData.Key.Title)
+        if title:
+            self.streamTitleChanged.emit(str(title))
 
     def _on_audio_buffer(self, buf):
         if not buf.isValid():
@@ -79,8 +108,11 @@ class PlayerEngine(QObject):
             return
         self.audioSamples.emit(samples, sample_rate)
 
-    def load(self, path: Path):
-        self._player.setSource(QUrl.fromLocalFile(str(path)))
+    def load_track(self, track):
+        if track.is_stream:
+            self._player.setSource(QUrl(track.stream_url))
+        else:
+            self._player.setSource(QUrl.fromLocalFile(str(track.path)))
 
     def play(self):
         self._player.play()

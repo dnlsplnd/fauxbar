@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QMainWindow,
     QMenu,
@@ -189,6 +190,10 @@ class MainWindow(QMainWindow):
         add_folder_action.triggered.connect(self._add_folder_dialog)
         file_menu.addAction(add_folder_action)
 
+        add_location_action = QAction("Add Location...", self)
+        add_location_action.triggered.connect(self._add_location_dialog)
+        file_menu.addAction(add_location_action)
+
         file_menu.addSeparator()
 
         clear_action = QAction("Clear Playlist", self)
@@ -251,6 +256,7 @@ class MainWindow(QMainWindow):
         self.player.durationChanged.connect(self._on_duration_changed)
         self.player.playingChanged.connect(self._on_playing_changed)
         self.player.trackFinished.connect(self._play_next)
+        self.player.streamTitleChanged.connect(self._on_stream_title_changed)
 
         self.model.rowsInserted.connect(self._update_status_bar)
         self.model.modelReset.connect(self._update_status_bar)
@@ -285,6 +291,15 @@ class MainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "Add Folder")
         if folder:
             self.model.add_paths([Path(folder)])
+
+    def _add_location_dialog(self):
+        url, ok = QInputDialog.getText(self, "Add Location", "URL:")
+        url = url.strip()
+        if not ok or not url:
+            return
+        if "://" not in url:
+            url = "http://" + url
+        self.model.add_stream(url)
 
     def _clear_playlist(self):
         confirm = self.settings.value("playback/confirm_clear", False, type=bool)
@@ -322,7 +337,11 @@ class MainWindow(QMainWindow):
         properties_action = menu.addAction("Properties...")
         chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
         if chosen is properties_action:
-            paths = [track.path for row in rows if (track := self.model.track_at(row))]
+            paths = [
+                track.path
+                for row in rows
+                if (track := self.model.track_at(row)) and not track.is_stream
+            ]
             self._edit_track_properties(paths)
 
     def _edit_track_properties(self, paths):
@@ -354,7 +373,7 @@ class MainWindow(QMainWindow):
         if track is None:
             return
         self.current_row = row
-        self.player.load(track.path)
+        self.player.load_track(track)
         self.player.play()
         self.table.selectRow(row)
         self.setWindowTitle(self._track_title_text(track))
@@ -393,7 +412,18 @@ class MainWindow(QMainWindow):
 
     def _on_duration_changed(self, duration_ms: int):
         self.seek_slider.setRange(0, duration_ms)
-        self.total_label.setText(format_duration(duration_ms / 1000))
+        track = self.model.track_at(self.current_row)
+        if track is not None and track.is_stream and duration_ms <= 0:
+            self.total_label.setText("LIVE")
+        else:
+            self.total_label.setText(format_duration(duration_ms / 1000))
+
+    def _on_stream_title_changed(self, title: str):
+        track = self.model.track_at(self.current_row)
+        if track is None or not track.is_stream:
+            return
+        self.np_title_label.setText(title)
+        self.setWindowTitle(title)
 
     def _on_seek_pressed(self):
         self._user_seeking = True
@@ -415,7 +445,7 @@ class MainWindow(QMainWindow):
             return
         self.np_title_label.setText(self._track_title_text(track))
         self.np_album_label.setText(track.album)
-        self.cover_art_widget.set_track(track.path)
+        self.cover_art_widget.set_track(None if track.is_stream else track.path)
 
     # ---- Layout persistence ----
 

@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
+    QLabel,
     QListWidget,
     QPushButton,
     QSpinBox,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from app import spectrum
+from app.player import HW_ACCEL_ENABLED_KEY
 
 DEFAULT_VOLUME_KEY = "playback/default_volume"
 CONFIRM_CLEAR_KEY = "playback/confirm_clear"
@@ -226,12 +228,21 @@ class AdvancedPage(QWidget):
         )
         layout.addRow("Peak hold time:", self.peak_hold_spin)
 
+        self.hw_accel_check = QCheckBox("Enable hardware-accelerated decoding", self)
+        self.hw_accel_check.setChecked(settings.value(HW_ACCEL_ENABLED_KEY, True, type=bool))
+        layout.addRow(self.hw_accel_check)
+
+        restart_label = QLabel("Changes take effect after restarting fauxbar.")
+        restart_label.setStyleSheet("color: #888888; font-style: italic;")
+        layout.addRow(restart_label)
+
     def apply(self, settings):
         settings.setValue(spectrum.SETTINGS_FFT_SIZE, self.fft_combo.currentData())
         settings.setValue(spectrum.SETTINGS_DB_FLOOR, float(self.db_floor_spin.value()))
         settings.setValue(spectrum.SETTINGS_ATTACK_MS, self.attack_spin.value())
         settings.setValue(spectrum.SETTINGS_RELEASE_MS, self.release_spin.value())
         settings.setValue(spectrum.SETTINGS_PEAK_HOLD_MS, self.peak_hold_spin.value())
+        settings.setValue(HW_ACCEL_ENABLED_KEY, self.hw_accel_check.isChecked())
 
 
 class SettingsDialog(QDialog):

@@ -11,16 +11,21 @@ COLUMNS = ["#", "Title", "Artist", "Album", "Duration"]
 
 @dataclass
 class Track:
-    path: Path
+    path: Path | None = None
+    stream_url: str = ""
     title: str = ""
     artist: str = ""
     album: str = ""
     track_number: str = ""
     duration: float = 0.0
 
+    @property
+    def is_stream(self) -> bool:
+        return bool(self.stream_url)
+
     def __post_init__(self):
         if not self.title:
-            self.title = self.path.stem
+            self.title = self.stream_url if self.is_stream else self.path.stem
 
 
 def format_duration(seconds: float) -> str:
@@ -95,7 +100,7 @@ class PlaylistModel(QAbstractTableModel):
         if col == 3:
             return track.album
         if col == 4:
-            return format_duration(track.duration)
+            return "Live" if track.is_stream else format_duration(track.duration)
         return None
 
     def add_paths(self, paths: list[Path]):
@@ -106,6 +111,12 @@ class PlaylistModel(QAbstractTableModel):
         self.beginInsertRows(QModelIndex(), start, start + len(files) - 1)
         for f in files:
             self.tracks.append(read_track(f))
+        self.endInsertRows()
+
+    def add_stream(self, url: str, title: str = ""):
+        start = len(self.tracks)
+        self.beginInsertRows(QModelIndex(), start, start)
+        self.tracks.append(Track(stream_url=url, title=title))
         self.endInsertRows()
 
     def clear(self):
@@ -132,7 +143,7 @@ class PlaylistModel(QAbstractTableModel):
 
     def refresh_rows(self, rows: list[int]):
         for row in rows:
-            if 0 <= row < len(self.tracks):
+            if 0 <= row < len(self.tracks) and not self.tracks[row].is_stream:
                 self.tracks[row] = read_track(self.tracks[row].path)
                 self.dataChanged.emit(self.index(row, 0), self.index(row, len(COLUMNS) - 1))
 
